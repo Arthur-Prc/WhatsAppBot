@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Message Sender</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f4f4f9;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+        }
+        .column {
+            flex: 1;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .drop-zone {
+            border: 2px dashed #ccc;
+            padding: 20px;
+            text-align: center;
+            margin-bottom: 20px;
+            cursor: pointer;
+        }
+        .drop-zone.dragover {
+            background-color: #e1f5fe;
+            border-color: #2196f3;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 10px;
+            border: 1px solid #ddd;
+            text-align: left;
+        }
+        th {
+            background-color: #f5f5f5;
+        }
+        textarea {
+            width: 100%;
+            height: 100px;
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        input[type="number"] {
+            padding: 8px;
+            width: 100px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #25D366;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #1ebe57;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .status {
+            margin-top: 10px;
+            font-style: italic;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <h1>WhatsApp Message Sender</h1>
+    <div class="container">
+        <div class="column">
+            <h2>Contacts</h2>
+            <div class="drop-zone" id="dropZone">
+                Drag and drop a CSV file here (name,phone)
+            </div>
+            <table id="contactsTable">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Phone</th>
+                    </tr>
+                </thead>
+                <tbody id="contactsBody"></tbody>
+            </table>
+        </div>
+        <div class="column">
+            <h2>Message Template</h2>
+            <textarea id="messageTemplate" placeholder="Write your message template here. Use {name} for personalization."></textarea>
+            <div class="controls">
+                <label>Avg time per message (minutes):</label>
+                <input type="number" id="avgTime" min="0.1" step="0.1" value="1">
+                <button id="sendButton" disabled>Send Messages via WhatsApp</button>
+                <div class="status" id="status"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const contactsBody = document.getElementById('contactsBody');
+        const messageTemplate = document.getElementById('messageTemplate');
+        const avgTimeInput = document.getElementById('avgTime');
+        const sendButton = document.getElementById('sendButton');
+        const statusDiv = document.getElementById('status');
+        let contacts = [];
+
+        // Drag and drop handling
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file && file.type === 'text/csv') {
+                readCSV(file);
+            } else {
+                statusDiv.textContent = 'Please drop a valid CSV file.';
+            }
+        });
+
+        // Read and parse CSV
+        function readCSV(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const text = e.target.result;
+                contacts = [];
+                const rows = text.split('\n').map(row => row.trim()).filter(row => row);
+                const headers = rows[0].split(',').map(header => header.trim().toLowerCase());
+                if (!headers.includes('name') || !headers.includes('phone')) {
+                    statusDiv.textContent = 'CSV must contain "name" and "phone" columns.';
+                    return;
+                }
+                for (let i = 1; i < rows.length; i++) {
+                    const cols = rows[i].split(',').map(col => col.trim());
+                    if (cols.length >= 2) {
+                        const contact = {
+                            name: cols[headers.indexOf('name')],
+                            phone: cols[headers.indexOf('phone')].replace(/\D/g, '') // Clean phone number
+                        };
+                        contacts.push(contact);
+                    }
+                }
+                updateTable();
+                sendButton.disabled = contacts.length === 0 || !messageTemplate.value;
+                statusDiv.textContent = `Loaded ${contacts.length} contacts.`;
+            };
+            reader.readAsText(file);
+        }
+
+        // Update contacts table
+        function updateTable() {
+            contactsBody.innerHTML = '';
+            contacts.forEach(contact => {
+                const row = document.createElement('tr');
+                row.innerHTML = `<td>${contact.name}</td><td>${contact.phone}</td>`;
+                contactsBody.appendChild(row);
+            });
+        }
+
+        // Enable/disable send button based on input
+        messageTemplate.addEventListener('input', () => {
+            sendButton.disabled = contacts.length === 0 || !messageTemplate.value;
+        });
+
+        // Send messages via WhatsApp with delay
+        sendButton.addEventListener('click', async () => {
+            if (contacts.length === 0 || !messageTemplate.value) {
+                statusDiv.textContent = 'Please load contacts and enter a message template.';
+                return;
+            }
+
+            sendButton.disabled = true;
+            statusDiv.textContent = 'Sending messages...';
+            const avgTime = parseFloat(avgTimeInput.value) * 60 * 1000; // Convert minutes to milliseconds
+
+            for (let i = 0; i < contacts.length; i++) {
+                const contact = contacts[i];
+                const message = messageTemplate.value.replace('{name}', contact.name);
+                const encodedMessage = encodeURIComponent(message);
+                const whatsappUrl = `https://wa.me/${contact.phone}?text=${encodedMessage}`;
+                
+                // Open WhatsApp link
+                window.open(whatsappUrl, '_blank');
+                
+                // Simulate delay between messages
+                await new Promise(resolve => setTimeout(resolve, avgTime));
+                statusDiv.textContent = `Sent message to ${contact.name} (${i + 1}/${contacts.length})`;
+            }
+
+            statusDiv.textContent = 'All messages sent!';
+            sendButton.disabled = false;
+        });
+    </script>
+</body>
+</html>
